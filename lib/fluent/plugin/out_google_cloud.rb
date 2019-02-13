@@ -1742,6 +1742,7 @@ module Fluent
 
     # Parse labels. Return nil if not set.
     def parse_labels(record)
+      @log.error "record = #{record}"
       payload_labels = record.delete(@labels_key)
       unless payload_labels.is_a?(Hash)
         @log.error "Invalid value of '#{@labels_key}' in the payload: " \
