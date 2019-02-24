@@ -13,7 +13,7 @@
 # limitations under the License.
 
 require 'google/apis'
-require 'helper'
+require_relative '../helper'
 require 'mocha/test_unit'
 require 'webmock/test_unit'
 require 'prometheus/client'
@@ -1245,6 +1245,87 @@ module BaseTest
     verify_log_entries(1, DATAFLOW_PARAMS)
   end
 
+  # Test generic_node with namespace, location, node_id
+  # with metadata server on gce
+  def test_generic_node_gce
+    setup_gce_metadata_stubs
+    setup_k8s_metadata_stubs
+    setup_logging_stubs do
+      d = create_driver(CONFIG_GENERIC_TYPE)
+      d.emit(generic_node_log_entry(log_entry(0), GENERIC_NODE_LOCAL_RESOURCE_ID_UNSPECIFIED) )
+      d.run
+    end
+    verify_log_entries(1, GENERIC_NODE_PARAMS_METADATA_GCE, 'jsonPayload')
+  end  
+
+  # Test generic_node with namespace, location, node_id
+  # without metadata server
+  def test_generic_node_default
+    setup_no_metadata_service_stubs
+    ENV[CREDENTIALS_PATH_ENV_VAR] = IAM_CREDENTIALS[:path]
+    setup_logging_stubs do
+      d = create_driver(CONFIG_GENERIC_TYPE_DEFAULT)
+      d.emit(generic_node_log_entry(log_entry(0), GENERIC_NODE_LOCAL_RESOURCE_ID_SPECIFIED) )
+      d.run
+    end
+    verify_log_entries(1, GENERIC_NODE_PARAMS_DEFAULT, 'jsonPayload')
+  end
+
+  # Test generic_node with namespace, location, node_id
+  # with metadata server on ec2
+  def test_generic_node_ec2
+    setup_ec2_metadata_stubs
+    ENV[CREDENTIALS_PATH_ENV_VAR] = IAM_CREDENTIALS[:path]
+    setup_logging_stubs do
+      d = create_driver(CONFIG_GENERIC_TYPE_EC2)
+      d.emit(generic_node_log_entry(log_entry(0), GENERIC_NODE_LOCAL_RESOURCE_ID_UNSPECIFIED) )
+      d.run
+    end
+    verify_log_entries(1, GENERIC_NODE_PARAMS_METADATA_EC2, 'jsonPayload')
+  end
+
+  # ++++++++++++++++++++
+
+  # Test generic_task with namespace, location,
+  # with metadata server on gce
+  def test_generic_task_gce
+    setup_gce_metadata_stubs
+    setup_k8s_metadata_stubs
+    setup_logging_stubs do
+      d = create_driver(CONFIG_GENERIC_TYPE)
+      d.emit(generic_node_log_entry(log_entry(0), GENERIC_TASK_LOCAL_RESOURCE_ID_UNSPECIFIED) )
+      d.run
+    end
+    verify_log_entries(1, GENERIC_TASK_PARAMS_METADATA_GCE, 'jsonPayload')
+  end  
+
+  # Test generic_task with namespace, location,
+  # without metadata server
+  def test_generic_task_default
+    setup_no_metadata_service_stubs
+    ENV[CREDENTIALS_PATH_ENV_VAR] = IAM_CREDENTIALS[:path]
+    setup_logging_stubs do
+      d = create_driver(CONFIG_GENERIC_TYPE_DEFAULT)
+      d.emit(generic_node_log_entry(log_entry(0), GENERIC_TASK_LOCAL_RESOURCE_ID_SPECIFIED) )
+      d.run
+    end
+    verify_log_entries(1, GENERIC_TASK_PARAMS_DEFAULT, 'jsonPayload')
+  end
+
+  # Test generic_task with namespace, location,
+  # with metadata server on ec2
+  def test_generic_task_ec2
+    setup_ec2_metadata_stubs
+    ENV[CREDENTIALS_PATH_ENV_VAR] = IAM_CREDENTIALS[:path]
+    setup_logging_stubs do
+      d = create_driver(CONFIG_GENERIC_TYPE_EC2)
+      d.emit(generic_node_log_entry(log_entry(0), GENERIC_TASK_LOCAL_RESOURCE_ID_UNSPECIFIED) )
+      d.run
+    end
+    verify_log_entries(1, GENERIC_TASK_PARAMS_METADATA_EC2, 'jsonPayload')
+  end  
+
+
   # Verify the subfields extraction of LogEntry fields.
 
   def test_log_entry_http_request_field_from_record
@@ -1283,7 +1364,7 @@ module BaseTest
   def test_log_entry_source_location_field_partial_from_record
     verify_subfields_partial_from_record(DEFAULT_SOURCE_LOCATION_KEY)
   end
-
+  
   # Verify the subfields extraction of LogEntry fields when they are not hashes.
 
   def test_log_entry_http_request_field_when_not_hash
@@ -1291,7 +1372,7 @@ module BaseTest
     # subfields behave the same way: if the field is not in the correct format,
     # log an error in the Fluentd log and remove this field from payload. This
     # is the preferred behavior per PM decision.
-    verify_subfields_untouched_when_not_hash(DEFAULT_HTTP_REQUEST_KEY)
+    verify_subfields_untouched_when_not_hash(DEFAULT_HTTP_REQUEST_KEY)    
   end
 
   def test_log_entry_labels_field_when_not_hash
@@ -2225,6 +2306,13 @@ module BaseTest
     }
   end
 
+  def generic_node_log_entry(log, local_resource_id)
+    {
+      log: log,
+      LOCAL_RESOURCE_ID_KEY => local_resource_id
+    }
+  end  
+
   def k8s_pod_log_entry(log)
     {
       log: log,
@@ -2296,7 +2384,7 @@ module BaseTest
     "test log entry #{i}"
   end
 
-  # If check_exact_labels is true, assert 'labels' and 'expected_labels' match
+# If check_exact_labels is true, assert 'labels' and 'expected_labels' match
   # exactly. If check_exact_labels is false, assert 'labels' is a subset of
   # 'expected_labels'.
   def check_labels(expected_labels, labels, check_exact_labels = true)

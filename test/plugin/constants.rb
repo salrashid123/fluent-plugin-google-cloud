@@ -205,6 +205,29 @@ module Constants
   ML_LOG_AREA = 'log_area_1'.freeze
   ML_TAG = 'master-replica-0'.freeze
 
+  # Generic labels.
+  GENERIC_NAMESPACE = 'default'.freeze
+  GENERIC_LOCATION = 'us-central1-a'.freeze
+
+  GENERIC_NODE = 'generic_node'.freeze
+  GENERIC_NODE_ID = 'somehost'.freeze
+
+  GENERIC_TASK = 'generic_node'.freeze
+  GENERIC_TASK_JOB = 'randomjob'.freeze
+  GENERIC_TASK_TASK_ID = 'randomtaskid'.freeze   
+
+  # Generic_Node labels.
+  GENERIC_NODE_LOCAL_RESOURCE_ID_SPECIFIED = 'generic_node.us-central1-a.default.somehost'.freeze
+
+  # Generic_Node labels without node_id or location
+  GENERIC_NODE_LOCAL_RESOURCE_ID_UNSPECIFIED = 'generic_node..default.'.freeze  
+
+  # Generic_Task labels.
+  GENERIC_TASK_LOCAL_RESOURCE_ID_SPECIFIED = 'generic_task.us-central1-a.default.randomjob.randomtaskid'.freeze  
+
+  # Generic_Task labels.
+  GENERIC_TASK_LOCAL_RESOURCE_ID_UNSPECIFIED = 'generic_task..default.randomjob.randomtaskid'.freeze  
+
   # Parameters used for authentication.
   AUTH_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:jwt-bearer'.freeze
   FAKE_AUTH_TOKEN = 'abc123'.freeze
@@ -372,6 +395,17 @@ module Constants
     label_map { "name": "#{ML_CONSTANTS[:service]}/job_id/log_area" }
   ).freeze
 
+  CONFIG_GENERIC_TYPE = %(
+  ).freeze
+
+  CONFIG_GENERIC_TYPE_DEFAULT = %(
+    project_id #{IAM_CREDENTIALS[:project_id]}
+  ).freeze
+
+  CONFIG_GENERIC_TYPE_EC2 = %(
+    project_id #{IAM_CREDENTIALS[:project_id]}
+  ).freeze 
+  
   CONFIG_CUSTOM_INSERT_ID_KEY_SPECIFIED = %(
     insert_id_key custom_insert_id_key
   ).freeze
@@ -814,6 +848,114 @@ module Constants
     }
   }.freeze
 
+  # Generic Node from config using GCE metadata
+  GENERIC_NODE_PARAMS_METADATA_GCE = {
+    resource: {
+      type: GENERIC_NODE_CONSTANTS[:resource_type],
+      labels: {
+        'namespace' => GENERIC_NAMESPACE,
+        'location' => ZONE,
+        'node_id' => VM_ID
+      }
+    },
+    log_name: 'test',
+    project_id: PROJECT_ID,
+    labels: {
+      "#{COMPUTE_CONSTANTS[:service]}/resource_name" => HOSTNAME
+    }
+  }.freeze
+
+  # Generic Node from config using EC2 metadata
+  GENERIC_NODE_PARAMS_METADATA_EC2 = {
+    resource: {
+      type: GENERIC_NODE_CONSTANTS[:resource_type],
+      labels: {
+        'namespace' => GENERIC_NAMESPACE,
+        'location' => EC2_PREFIXED_ZONE,
+        'node_id' => EC2_VM_ID
+      }
+    },
+    log_name: 'test',
+    project_id: IAM_CREDENTIALS[:project_id],
+    labels: {
+       "#{EC2_CONSTANTS[:service]}/resource_name" => HOSTNAME
+    }
+  }.freeze
+
+  # Generic Node from config usign CERT FILE
+  GENERIC_NODE_PARAMS_DEFAULT = {
+    resource: {
+      type: GENERIC_NODE_CONSTANTS[:resource_type],
+      labels: {
+        'namespace' => GENERIC_NAMESPACE,
+        'location' => GENERIC_LOCATION,
+        'node_id' => GENERIC_NODE_ID
+      }
+    },
+    log_name: 'test',
+    project_id: IAM_CREDENTIALS[:project_id],
+    labels: {
+      "#{COMPUTE_CONSTANTS[:service]}/resource_name" => HOSTNAME
+    }
+  }.freeze  
+
+#++++++++++++++++++
+
+  # Generic Task from config using GCE metadata
+  GENERIC_TASK_PARAMS_METADATA_GCE = {
+    resource: {
+      type: GENERIC_TASK_CONSTANTS[:resource_type],
+      labels: {
+        'namespace' => GENERIC_NAMESPACE,
+        'location' => ZONE,
+        'job' => GENERIC_TASK_JOB,
+        'task_id' => GENERIC_TASK_TASK_ID
+      }
+    },
+    log_name: 'test',
+    project_id: PROJECT_ID,
+    labels: {
+      "#{COMPUTE_CONSTANTS[:service]}/resource_name" => HOSTNAME
+    }
+  }.freeze
+
+  # Generic TASK from config using EC2 metadata
+  GENERIC_TASK_PARAMS_METADATA_EC2 = {
+    resource: {
+      type: GENERIC_TASK_CONSTANTS[:resource_type],
+      labels: {
+        'namespace' => GENERIC_NAMESPACE,
+        'location' => EC2_PREFIXED_ZONE,
+        'job' => GENERIC_TASK_JOB,
+        'task_id' => GENERIC_TASK_TASK_ID
+      }
+    },
+    log_name: 'test',
+    project_id: IAM_CREDENTIALS[:project_id],
+    labels: {
+       "#{EC2_CONSTANTS[:service]}/resource_name" => HOSTNAME
+    }
+  }.freeze
+
+  # Generic Task from config usign CERT FILE
+  GENERIC_TASK_PARAMS_DEFAULT = {
+    resource: {
+      type: GENERIC_TASK_CONSTANTS[:resource_type],
+      labels: {
+        'namespace' => GENERIC_NAMESPACE,
+        'location' => GENERIC_LOCATION,
+        'job' => GENERIC_TASK_JOB,
+        'task_id' => GENERIC_TASK_TASK_ID
+      }
+    },
+    log_name: 'test',
+    project_id: IAM_CREDENTIALS[:project_id],
+    labels: {
+      "#{COMPUTE_CONSTANTS[:service]}/resource_name" => HOSTNAME
+    }
+  }.freeze  
+
+  
   EC2_REGION_PARAMS = {
     resource: {
       type: EC2_CONSTANTS[:resource_type],
