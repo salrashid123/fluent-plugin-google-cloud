@@ -121,12 +121,24 @@ module Fluent
         service: 'ec2.amazonaws.com',
         resource_type: 'aws_ec2_instance'
       }.freeze
+      AZURE_CONSTANTS = {
+        # Since there is currently no GCP resource_type=azure_vm_instance
+        resource_type: 'azure_vm_instance'
+      }.freeze
       ML_CONSTANTS = {
         service: 'ml.googleapis.com',
         resource_type: 'ml_job',
         extra_resource_labels: %w(job_id task_name)
       }.freeze
-
+      GENERIC_NODE_CONSTANTS = {
+        resource_type: 'generic_node',
+        extra_resource_labels: %w(location namespace node_id)
+      }.freeze
+      GENERIC_TASK_CONSTANTS = {
+        resource_type: 'generic_task',
+        extra_resource_labels: %w(location namespace job task_id)
+      }.freeze
+  
       # The map between a subservice name and a resource type.
       SUBSERVICE_MAP =
         [APPENGINE_CONSTANTS, GKE_CONSTANTS, DATAFLOW_CONSTANTS,
@@ -149,11 +161,11 @@ module Fluent
       # "operation", "sourceLocation", "trace" fields in the LogEntry.
       DEFAULT_HTTP_REQUEST_KEY = 'httpRequest'.freeze
       DEFAULT_INSERT_ID_KEY = 'logging.googleapis.com/insertId'.freeze
-      DEFAULT_LABELS_KEY = 'logging.googleapis.com/labels'.freeze
+      DEFAULT_LABELS_KEY = 'logging.googleapis.com/labels'.freeze      
       DEFAULT_OPERATION_KEY = 'logging.googleapis.com/operation'.freeze
       DEFAULT_SOURCE_LOCATION_KEY =
         'logging.googleapis.com/sourceLocation'.freeze
-      DEFAULT_SPAN_ID_KEY = 'logging.googleapis.com/spanId'.freeze
+      DEFAULT_SPAN_ID_KEY = 'logging.googleapis.com/spanId'.freeze        
       DEFAULT_TRACE_KEY = 'logging.googleapis.com/trace'.freeze
       DEFAULT_TRACE_SAMPLED_KEY = 'logging.googleapis.com/trace_sampled'.freeze
 
@@ -227,7 +239,7 @@ module Fluent
             %w(line line parse_int)
           ],
           'Google::Logging::V2::LogEntrySourceLocation',
-          'Google::Apis::LoggingV2::LogEntrySourceLocation'
+          'Google::Apis::LoggingV2::LogEntrySourceLocation'          
         ]
       }.freeze
 
@@ -271,6 +283,9 @@ module Fluent
     # Address of the metadata service.
     METADATA_SERVICE_ADDR = '169.254.169.254'.freeze
 
+    # API Version for Azure
+    AZURE_METADATA_API_VERSION = '2018-10-01'.freeze
+
     # Disable this warning to conform to fluentd config_param conventions.
     # rubocop:disable Style/HashSyntax
 
@@ -305,7 +320,7 @@ module Fluent
     config_param :http_request_key, :string, :default =>
       DEFAULT_HTTP_REQUEST_KEY
     config_param :insert_id_key, :string, :default => DEFAULT_INSERT_ID_KEY
-    config_param :labels_key, :string, :default => DEFAULT_LABELS_KEY
+    config_param :labels_key, :string, :default => DEFAULT_LABELS_KEY      
     config_param :operation_key, :string, :default => DEFAULT_OPERATION_KEY
     config_param :source_location_key, :string, :default =>
       DEFAULT_SOURCE_LOCATION_KEY
@@ -683,11 +698,11 @@ module Fluent
           severity = compute_severity(
             entry_level_resource.type, record, entry_level_common_labels)
 
-          dynamic_labels_from_payload = parse_labels(record)
+            dynamic_labels_from_payload = parse_labels(record)
 
-          entry_level_common_labels = entry_level_common_labels.merge!(
-            dynamic_labels_from_payload) if dynamic_labels_from_payload
-
+            entry_level_common_labels = entry_level_common_labels.merge!(
+              dynamic_labels_from_payload) if dynamic_labels_from_payload
+  
           entry = @construct_log_entry.call(entry_level_common_labels,
                                             entry_level_resource,
                                             severity,
@@ -1039,6 +1054,7 @@ module Fluent
       OTHER = 0  # Other/unkown platform
       GCE = 1    # Google Compute Engine
       EC2 = 2    # Amazon EC2
+      AZURE = 3  # Azure
     end
 
     # Determine what platform we are running on by consulting the metadata
@@ -1059,6 +1075,12 @@ module Fluent
             @log.info 'Detected EC2 platform'
             return Platform::EC2
           end
+        end
+      rescue OpenURI::HTTPError => error
+        response = error.io
+        if response.meta['server'] == 'Microsoft-IIS/10.0'
+          @log.info 'Detected Azure platform'
+          return Platform::AZURE
         end
       rescue StandardError => e
         @log.error 'Failed to access metadata service: ', error: e
@@ -1091,6 +1113,15 @@ module Fluent
       end
 
       @ec2_metadata
+    end
+
+    def fetch_azure_metadata(metadata_path)
+      raise "Called fetch_azure_metadata with platform=#{@platform}" unless
+        @platform == Platform::AZURE
+      # See https://docs.microsoft.com/en-us/azure/virtual-machines/windows/instance-metadata-service
+      open('http://' + METADATA_SERVICE_ADDR + '/metadata/' +
+           metadata_path + '?api-version=' + AZURE_METADATA_API_VERSION + '&format=text',
+           'Metadata' => 'true', &:read)
     end
 
     # Set regexp patterns to parse tags and logs.
@@ -1143,6 +1174,7 @@ module Fluent
     def set_vm_id
       @vm_id ||= fetch_gce_metadata('instance/id') if @platform == Platform::GCE
       @vm_id ||= ec2_metadata['instanceId'] if @platform == Platform::EC2
+      @vm_id ||= fetch_azure_metadata('instance/compute/vmId') if @platform == Platform::AZURE
     rescue StandardError => e
       @log.error 'Failed to obtain vm_id: ', error: e
     end
@@ -1168,6 +1200,8 @@ module Fluent
                          end
       @zone ||= 'aws:' + ec2_metadata[aws_location_key] if
         @platform == Platform::EC2 && ec2_metadata.key?(aws_location_key)
+      @zone ||= fetch_azure_metadata('instance/compute/location') if
+        @platform == Platform::AZURE
     rescue StandardError => e
       @log.error 'Failed to obtain location: ', error: e
     end
@@ -1195,6 +1229,9 @@ module Fluent
 
       when Platform::EC2
         return EC2_CONSTANTS[:resource_type]
+
+      when Platform::AZURE
+        return AZURE_CONSTANTS[:resource_type]
 
       when Platform::GCE
         # Resource types determined by @subservice_name config.
@@ -1233,7 +1270,7 @@ module Fluent
       # GCE.
       when COMPUTE_CONSTANTS[:resource_type]
         raise "Cannot construct a #{type} resource without vm_id and zone" \
-          unless @vm_id && @zone
+          unless @vm_id && @zone        
         return {
           'instance_id' => @vm_id,
           'zone' => @zone
@@ -1242,7 +1279,7 @@ module Fluent
       # GKE container.
       when GKE_CONSTANTS[:resource_type]
         raise "Cannot construct a #{type} resource without vm_id and zone" \
-          unless @vm_id && @zone
+          unless @vm_id && @zone        
         return {
           'instance_id' => @vm_id,
           'zone' => @zone,
@@ -1264,7 +1301,7 @@ module Fluent
       # EC2.
       when EC2_CONSTANTS[:resource_type]
         raise "Cannot construct a #{type} resource without vm_id and zone" \
-          unless @vm_id && @zone
+          unless @vm_id && @zone        
         labels = {
           'instance_id' => @vm_id,
           'region' => @zone
@@ -1474,7 +1511,7 @@ module Fluent
       # implement buffering and caching.
       @log.debug('Failed to retrieve monitored resource from Metadata' \
                  " Agent with local_resource_id #{local_resource_id}.")
-      construct_k8s_resource_locally(local_resource_id)
+      construct_resource_locally(local_resource_id)
     end
 
     # Extract entry level monitored resource and common labels that should be
@@ -1749,7 +1786,7 @@ module Fluent
       # TODO(qingling128) On the next major after 0.7.4, make all logEntry
       # subfields behave the same way: if the field is not in the correct
       # format, log an error in the Fluentd log and remove this field from
-      # payload. This is the preferred behavior per PM decision.
+      # payload. This is the preferred behavior per PM decision.      
       LOG_ENTRY_FIELDS_MAP.each do |field_name, config|
         payload_key, subfields, grpc_class, non_grpc_class = config
         begin
@@ -1792,7 +1829,7 @@ module Fluent
         end
       end
     end
-
+  
     # Parse labels. Return nil if not set.
     def parse_labels(record)
       payload_labels = record.delete(@labels_key)
@@ -1817,6 +1854,7 @@ module Fluent
       @log.error "Failed to extract '#{@labels_key}' from payload.", err
       return nil
     end
+
 
     # Values permitted by the API for 'severity' (which is an enum).
     VALID_SEVERITIES = Set.new(
@@ -2346,7 +2384,7 @@ module Fluent
     end
 
     # Construct monitored resource locally for k8s resources.
-    def construct_k8s_resource_locally(local_resource_id)
+    def construct_resource_locally(local_resource_id)
       return unless
         /^
           (?<resource_type>k8s_container)
@@ -2359,11 +2397,24 @@ module Fluent
           \.(?<pod_name>[.0-9a-z-]+)$/x =~ local_resource_id ||
         /^
           (?<resource_type>k8s_node)
-          \.(?<node_name>[0-9a-z-]+)$/x =~ local_resource_id
+          \.(?<node_name>[0-9a-z-]+)$/x =~ local_resource_id ||
+        /^
+          (?<resource_type>generic_node)
+          \.(?<location>[0-9A-Za-z\-_]*+)
+          \.(?<namespace>[0-9A-Za-z\-_]*+)
+          \.(?<node_id>[0-9A-Za-z\-_]*+)$/x =~ local_resource_id ||
+        /^
+          (?<resource_type>generic_task)
+          \.(?<location>[0-9A-Za-z\-_]*+)
+          \.(?<namespace>[0-9A-Za-z\-_]*+)
+          \.(?<job>[0-9A-Za-z\-_]*+)
+          \.(?<task_id>[0-9A-Za-z\-_]*+)$/x =~ local_resource_id
 
       # Clear name and location if they're explicitly set to empty.
       @k8s_cluster_name = nil if @k8s_cluster_name == ''
       @k8s_cluster_location = nil if @k8s_cluster_location == ''
+
+      do_fallback = false
 
       begin
         @k8s_cluster_name ||= fetch_gce_metadata(
@@ -2383,6 +2434,9 @@ module Fluent
           'cluster_name' => @k8s_cluster_name,
           'location' => @k8s_cluster_location
         }
+        unless @k8s_cluster_name && @k8s_cluster_location
+          do_fallback = true
+        end
         fallback_resource = GKE_CONSTANTS[:resource_type]
       when K8S_POD_CONSTANTS[:resource_type]
         labels = {
@@ -2391,6 +2445,9 @@ module Fluent
           'cluster_name' => @k8s_cluster_name,
           'location' => @k8s_cluster_location
         }
+        unless @k8s_cluster_name && @k8s_cluster_location
+          do_fallback = true
+        end
         fallback_resource = GKE_CONSTANTS[:resource_type]
       when K8S_NODE_CONSTANTS[:resource_type]
         labels = {
@@ -2398,9 +2455,36 @@ module Fluent
           'cluster_name' => @k8s_cluster_name,
           'location' => @k8s_cluster_location
         }
+        unless @k8s_cluster_name && @k8s_cluster_location
+          do_fallback = true
+        end
+        fallback_resource = COMPUTE_CONSTANTS[:resource_type]
+      when GENERIC_NODE_CONSTANTS[:resource_type]
+        if location == ''
+          location = @zone
+        end
+        if node_id == ''
+          node_id = @vm_id
+        end
+        labels = {
+          'location' =>  location,
+          'namespace' => namespace,
+          'node_id' => node_id
+        }
+        fallback_resource = COMPUTE_CONSTANTS[:resource_type]
+      when GENERIC_TASK_CONSTANTS[:resource_type]
+        if location == ''
+          location = @zone
+        end
+        labels = {
+          'location' =>  location,
+          'namespace' => namespace,
+          'job' => job,
+          'task_id' => task_id
+        }
         fallback_resource = COMPUTE_CONSTANTS[:resource_type]
       end
-      unless @k8s_cluster_name && @k8s_cluster_location
+      if do_fallback
         @log.error "Failed to construct #{resource_type} resource locally." \
                    ' Falling back to writing logs against' \
                    " #{fallback_resource} resource.", error: e
