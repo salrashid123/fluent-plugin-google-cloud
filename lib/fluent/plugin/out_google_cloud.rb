@@ -1200,8 +1200,19 @@ module Fluent
                          end
       @zone ||= 'aws:' + ec2_metadata[aws_location_key] if
         @platform == Platform::EC2 && ec2_metadata.key?(aws_location_key)
-      @zone ||= fetch_azure_metadata('instance/compute/location') if
-        @platform == Platform::AZURE
+
+      # TODO: map azure locations
+       if @platform == Platform::AZURE
+         azure_location = fetch_azure_metadata('instance/compute/location')
+         azure_zone = fetch_azure_metadata('instance/compute/zone')
+
+         if azure_zone.empty?
+          @zone ||= 'azure:' + azure_location
+         else
+          @zone ||= 'azure:' + azure_location + '-' + azure_zone
+         end
+
+       end
     rescue StandardError => e
       @log.error 'Failed to obtain location: ', error: e
     end
