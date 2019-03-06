@@ -1,6 +1,6 @@
 # Writing Developer logs with Google Cloud Logging
 
-Several months ago Google Cloud Logging introduced two new [monitored resource](https://cloud.google.com/logging/docs/basic-concepts#monitored-resources) types geared towards allowing developers to emit cloud logging messages specifically for their own application centric logs.  Pereviously, application logs generally had to be tied to existing predefined `monitored_resources` such as `GCE`, `GKE`, `AppEngine`, `Dataflow` and so on.  Under those monitoried resources sources, multiple log entries were attributed to specific `logNames` describing the subsystem like `syslog`, `apache2`, `nginx`, `mysql`, etc.  In the end, the `monitored_resource` defined the source system and the `logName` the source application/system.
+Several months ago Google Cloud Logging introduced two new [monitored resource](https://cloud.google.com/logging/docs/basic-concepts#monitored-resources) types geared towards allowing developers to emit cloud logging messages for their own application centric logs.  Pereviously, application logs generally had to be tied to existing predefined `monitored_resources` such as `GCE`, `GKE`, `AppEngine`, `Dataflow` and so on.  Under those monitoried resources sources, multiple log entries were attributed to specific `logNames` describing the subsystem like `syslog`, `apache2`, `nginx`, `mysql`, etc.  In the end, the `monitored_resource` defined the source system and the `logName` the source application/system.
 
 What if you wanted to emit your own application logs that allows you to define a generic source resource or task _and_ the logName?  In other words, have a monitoired resource that specifically doens't prescribe the source system and process withing that but allows you to define describe your own.  Thats where the new `generic_node` and `generic_task` resource types come in. These new resource types can be thought of as a generic source system that represents where your application runs (`generic_node`) and the specific instance of your application (`generic_task`).
 
@@ -38,7 +38,7 @@ Taken from the documentation:
 * `task_id`: A unique identifier for the task within the namespace and job, such as a replica index identifying the task within the job. 
 
 
-> **NOTE**: while you can set the `location` attribute to anything you want, if it not one of the GCE or EC2 `zones`, then [logs-to-metrics](https://cloud.google.com/logging/docs/logs-based-metrics/) with that attribute will not work (as of 2/13/19) 
+> **NOTE**: while you can set the `location` attribute to anything you want, if it not one of the GCE or EC2 `zones`, then [logs-to-metrics](https://cloud.google.com/logging/docs/logs-based-metrics/) with that attribute will not work (as of 2/13/19). However, it maybe possible to emit logs and still have metrics if the `location` and `vmID` matches an existing VM  running on GCP (I havne't confirmed that yet though).
 
 ## Sending Logs
 
@@ -57,7 +57,10 @@ This article will show how to send `generic_task` and `generic_node` logs via
   - Supported anywhere `fluentd` runs.
   - Requires authentication credentials file.
 
-If you are running on GCE or EC2, the `Cloud Logging Agent` would be the best bet.  If you are already using `fluentd` elsewhere, just add the `fluent-plugin-google-cloud` gem.
+If you are running on GCE or EC2, the `Cloud Logging Agent` would be the best bet.  If you are already using `fluentd` elsewhere, just add the `fluent-plugin-google-cloud` gem then add on the forked `out_google_cloud.rb` as describe a bit below.
+
+>> **NOTE** as of `2/5/19`, the changes needed to support `generic_node` and `generic_task` is NOT included in the fluent plugin for google cloud stackdriver.  However, the changes are relatively simple so I've _forked_ [fluent-plugin-google-cloud](https://github.com/GoogleCloudPlatform/fluent-plugin-google-cloud) and added in the changes here:
+[https://github.com/salrashid123/fluent-plugin-google-cloud](https://github.com/salrashid123/fluent-plugin-google-cloud).  The only real change is to [out_google_cloud.rb](https://github.com/GoogleCloudPlatform/fluent-plugin-google-cloud/blob/master/lib/fluent/plugin/out_google_cloud.rb).  I'll keep sync with upstream every week or so to keep it uptoday.   Ofcourse to be clear, this for is *NOT supported by google cloud*
 
 For refernece, here are some related articles on Cloud Logging I tried out over the year:
   - [Apache/Nginx Structured Logs with Cloud Logging Agent](https://medium.com/google-cloud/envoy-nginx-apache-http-structured-logs-with-google-cloud-logging-91fe5965badf)
@@ -65,6 +68,9 @@ For refernece, here are some related articles on Cloud Logging I tried out over 
   - [Combining correlated Log Lines in Google Stackdriver](https://medium.com/google-cloud/combining-correlated-log-lines-in-google-stackdriver-dd23284aeb29)
   - [auditd agent config for Stackdriver Logging](https://medium.com/google-cloud/auditd-agent-config-for-stackdriver-logging-c27d1431ed3a)
   - [Envoy Proxy fluentd parser](https://github.com/salrashid123/fluent-plugin-envoy-parser)
+  - [Fluentd filter plugin for Google Cloud Data Loss Prevention API](https://github.com/salrashid123/fluent-plugin-gcp-dlp-filter)
+
+Anyway...
 
 ### Cloud Logging API
 
@@ -109,7 +115,7 @@ and
 
 More common than the API, Cloud Logging reads log files on source systems and emits them to GCP via a logging agent or a fluentd plugin.  While on GCE or EC2 instances, the [cloud logging agent](https://cloud.google.com/logging/docs/agent/) provides easy installation and [several pre-built configuration](https://github.com/GoogleCloudPlatform/fluentd-catch-all-config) to emit formatted log to GCP.  If the source system is running off the shelf `fluentd`, the cloud logging integration can be added in by simply applying the  [flutnet-plugin-google-cloud](https://github.com/GoogleCloudPlatform/fluent-plugin-google-cloud) gem.
 
-First we will install the `cloud logging agent` on GCE and then the `fluent-plugin-google-cloud` on generic, stan-alone `fluentd`.  This article does not show the installation steps on AWS and the links above describe its setup.
+First we will install the `cloud logging agent` on GCE and then the `fluent-plugin-google-cloud` on generic, stand-alone `fluentd`.  This article does not show the installation steps on AWS and the links above describe its setup.
 
 ### GCE
 
@@ -118,8 +124,18 @@ First we will install the `cloud logging agent` on GCE and then the `fluent-plug
 2) `ssh` to the VM and install the structured logging agent
 
 ```
-    curl -sSO "https://dl.google.com/cloudagents/install-logging-agent.sh"
-    sudo bash install-logging-agent.sh --structured
+curl -sSO "https://dl.google.com/cloudagents/install-logging-agent.sh"
+sudo bash install-logging-agent.sh --structured
+```
+
+```
+/opt/google-fluentd/embedded/bin/gem list fluent-plugin-google-cloud
+    fluent-plugin-google-cloud (0.7.5)
+
+export GOOGLE_PLUGIN_VERSION="0.7.5"
+
+wget  https://raw.githubusercontent.com/salrashid123/fluent-plugin-google-cloud/master/lib/fluent/plugin/out_google_cloud.rb \
+       -O /opt/google-fluentd/embedded/lib/ruby/gems/2.4.0/gems/fluent-plugin-google-cloud-$GOOGLE_PLUGIN_VERSION/lib/fluent/plugin/out_google_cloud.rb
 ```
 
 3) Add configuration to `/etc/google-fluentd/google-fluentd.conf`
@@ -136,7 +152,7 @@ First we will install the `cloud logging agent` on GCE and then the `fluent-plug
   @type record_transformer
   @log_level debug
   <record>
-    "logging.googleapis.com/local_resource_id" "generic_node.us-central1-a.default.somehost"
+    "logging.googleapis.com/local_resource_id" "generic_node..default."
   </record>
 </filter>
 <match gcp_resource.**>
@@ -148,7 +164,7 @@ First we will install the `cloud logging agent` on GCE and then the `fluent-plug
   @type record_transformer
   @log_level debug
   <record>
-    "logging.googleapis.com/local_resource_id" "generic_task.us-central-1.default.randomjob.randomtaskid"
+    "logging.googleapis.com/local_resource_id" "generic_task..default.randomjob.randomtaskid"
   </record>
 </filter>
 <match gcp_task.**>
@@ -179,6 +195,10 @@ curl -X POST -d 'json={"foo":"bar"}' http://localhost:8888/gcp_resource.log
 curl -X POST -d 'json={"foo":"bar"}' http://localhost:8888/gcp_task.log
 ```
 
+Give about 30seconds, you should see the lines indicating the logs were transmitted to google
+- `/var/log/google-fluentd/google-fluentd.log`
+```
+
 6) Check cloud logging console for output under `Generic Node` and `Generic Task`
 
 - ![images/generic_node_agent.png](images/generic_node_agent.png)
@@ -197,7 +217,13 @@ The following describes installing [fluent-plugin-google-cloud](https://github.c
 2) Assign IAM role _Logging Writer_ to that service account
 3) Download JSON cert and rename the file to `application_default_credentials.json`
 
-4) Install `fluentd` on the target system (in this case `debian-stretch`)
+if you want to test this with a local docker image, copy the credential to a folder under the current directory  called `certs` and run
+
+`docker run -ti  -p 8888:8888 -v `pwd`/certs/:/etc/google/auth/ debian:stretch /bin/bash`
+then
+`apt-get update && apt-get install curl wget sudo make vim -y`
+
+4) Install `fluentd` on the target system (in this case `debian-stretch`))
 
 ```
   curl -L https://toolbelt.treasuredata.com/sh/install-debian-stretch-td-agent3.sh | sh
@@ -209,16 +235,32 @@ The following describes installing [fluent-plugin-google-cloud](https://github.c
   /opt/td-agent/embedded/bin/gem install fluent-plugin-google-cloud
 ```
 
+> TODO: installing `fluent-google-plugin` directly to fluentd Building native extensions so `make` is needed on the initall intall
+
 6) Add certificate and change permisssions
 
   Copy  `application_default_credentials.json` to the target system as `/etc/google/auth/application_default_credentials.json` and change permissions:
 
 ```bash
-  $ chown td-agent:td-agent /etc/google/auth/application_default_credentials.json
-  $ chmod go-rwx /etc/google/auth/application_default_credentials.json
+  chown td-agent:td-agent /etc/google/auth/application_default_credentials.json
+  chmod go-rwx /etc/google/auth/application_default_credentials.json
 
-  $ ls -lart /etc/google/auth/application_default_credentials.json
+  ls -lart /etc/google/auth/application_default_credentials.json
   -rw-r----- 1 td-agent td-agent 2332 Jan 16 20:52 /etc/google/auth/application_default_credentials.json
+```
+
+7) Install `out_google_cloud.rb` from fork repository
+
+```
+/opt/td-agent/embedded/bin/gem  list fluent-plugin-google-cloud
+    fluent-plugin-google-cloud (0.7.5)
+```
+
+so export the verison and copy the fork
+```
+export GOOGLE_PLUGIN_VERSION="0.7.5"
+wget  https://raw.githubusercontent.com/salrashid123/fluent-plugin-google-cloud/master/lib/fluent/plugin/out_google_cloud.rb \
+       -O /opt/td-agent/embedded/lib/ruby/gems/2.4.0/gems/fluent-plugin-google-cloud-0.7.5/lib/fluent/plugin/out_google_cloud.rb
 ```
 
 7) Configure fluentd
@@ -267,17 +309,17 @@ The following describes installing [fluent-plugin-google-cloud](https://github.c
   curl -X POST -d 'json={"foo":"bar"}' http://localhost:8888/gcp_task.log
 ```
 
+tail the logfile at `/var/log/td-agent/td-agent.log`  (wait about a minute until the agent flushes the logs to stackdriver)
+
 9) Check cloud logging console for output under `Generic Node` and `Generic Task`
 
 - ![images/generic_node_agent_fluent.png](images/generic_node_agent_fluent.png)
 
 - ![images/generic_task_agent_fluent.png](images/generic_task_agent_fluent.png)
 
-
 > **Note** If you do not not define the `node_id` or `location` and run on GCE or EC2, the plugin will attempt to automatically try to derive the values from GCE or EC2 metadata server for the`vm_id` as the `node_id` and `zone` as `location`.
 
-
-## Developer logs from logfiles
+## Reading Developer logs from arbitrary files
 
 The example above we setup the cloud logging agent for GCE and the plugin for fluentd but used a test debug handler to source logs (`@type http`).  In the following configuration, we'll use an actual log file (eg. `/var/log/node_logs.log`) (which is what you'd likely do in production).  The following isn't anything specific to `google-fluentd` but rather just plain fluentd configuration for log sources (i've added in the section in to show a more realistic example than `@type http`).
 
