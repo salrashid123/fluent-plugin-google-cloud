@@ -196,8 +196,8 @@ curl -X POST -d 'json={"foo":"bar"}' http://localhost:8888/gcp_task.log
 ```
 
 Give about 30seconds, you should see the lines indicating the logs were transmitted to google
-- `/var/log/google-fluentd/google-fluentd.log`
-```
+`/var/log/google-fluentd/google-fluentd.log`
+
 
 6) Check cloud logging console for output under `Generic Node` and `Generic Task`
 
@@ -221,7 +221,7 @@ if you want to test this with a local docker image, copy the credential to a fol
 
 `docker run -ti  -p 8888:8888 -v `pwd`/certs/:/etc/google/auth/ debian:stretch /bin/bash`
 then
-`apt-get update && apt-get install curl wget sudo make vim -y`
+`apt-get update && apt-get install curl wget sudo make vim gnupg2 -y`
 
 4) Install `fluentd` on the target system (in this case `debian-stretch`))
 
