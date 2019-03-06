@@ -173,14 +173,14 @@ wget  https://raw.githubusercontent.com/salrashid123/fluent-plugin-google-cloud/
 </match>
 ```
 
-If you would rather derive the `zone` and represent the node as the `vmid` value in GCE or EC2, simply do not specify that value:
+If you would rather specify the `zone` and represent the node name you prevfer other than the GCE/EC2/Azure `vmid`, simply specify that value:
 
 eg:
 ```
- "logging.googleapis.com/local_resource_id" "generic_node..default."
+ "logging.googleapis.com/local_resource_id" "generic_node.LOCATION.default.HOST"
 ```
 
-In the example above, the GCE|EC2 metadata server will provide the `zone` and `vmid` values for `location` and `node`, respectively.
+Again, if you omit speecifying the `location` or `node`, the plugin will attempt to derive those values while running on GCP, AWS or Azure.
 
 4) Restart `google-fluentd`
 
@@ -200,6 +200,8 @@ Give about 30seconds, you should see the lines indicating the logs were transmit
 
 
 6) Check cloud logging console for output under `Generic Node` and `Generic Task`
+
+Note that in the screenshot below, the `node_id` is actually the VM's id derived from the GCP Metadataserver.  You can use that nodeid to correlate other for this particular VM.
 
 - ![images/generic_node_agent.png](images/generic_node_agent.png)
 
@@ -221,7 +223,9 @@ if you want to test this with a local docker image, copy the credential to a fol
 
 `docker run -ti  -p 8888:8888 -v `pwd`/certs/:/etc/google/auth/ debian:stretch /bin/bash`
 then
-`apt-get update && apt-get install curl wget sudo make vim gnupg2 -y`
+`apt-get update && apt-get install curl wget sudo make vim gcc gnupg2 -y`
+
+(yes, i know, gcc, make; the `gem install` command there build the fluent library from scratch with grpc support.  There has to be a way to package all of it directly without users needed to add those packages;  its a TODO for me after i understand ruby a bit better..)
 
 4) Install `fluentd` on the target system (in this case `debian-stretch`))
 
@@ -234,8 +238,6 @@ then
 ```
   /opt/td-agent/embedded/bin/gem install fluent-plugin-google-cloud
 ```
-
-> TODO: installing `fluent-google-plugin` directly to fluentd Building native extensions so `make` is needed on the initall intall
 
 6) Add certificate and change permisssions
 
@@ -403,5 +405,10 @@ You should see the logs in GCP assuming you setup a JSON certficate file into (`
 
 ## Summary
 
-You can use these new types to setup logs for your own application and ingest them into `Google Cloud Logging`.  While you don't get truly 'top-level' resource types (your'e still dealing with the `generic_*` ones), you are free here to define what system and application that sources logs.  Once you have logs with these fields sent, you can setup additional GCP capabilities like [logs-to-metrics](https://cloud.google.com/logging/docs/logs-based-metrics/), alerts, and so on based on your own applicaiton logs and devOPS needs.
+You can use these new types to setup logs for your own applications and ingest them into `Google Cloud Logging`.  While you don't get truly 'top-level' resource types (your'e still dealing with the `generic_*` ones), you are free here to define what system and application that sources logs.
 
+## Bonus Level: Azure
+
+The forked repo also supports Azure metadata server (for details, see [commit](https://github.com/salrashid123/fluent-plugin-google-cloud/commit/e58ab8199d1fe6d5198c8090774a6d6c2c07b6d2)).  What this means is if you run fluentd on Azure and specify the path the the json certificate file, the plugin will retrieve the `vmID` and `location` attribute from the link-local metadata server.  For examlple:
+
+![images/azure.png](images/azure.png)
