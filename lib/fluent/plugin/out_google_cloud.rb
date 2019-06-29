@@ -2413,7 +2413,7 @@ module Fluent
           (?<resource_type>generic_node)
           \.(?<location>[0-9A-Za-z\-_]*+)
           \.(?<namespace>[0-9A-Za-z\-_]*+)
-          \.(?<node_id>[0-9A-Za-z\-_]*+)$/x =~ local_resource_id ||
+          \.(?<node_id>[0-9A-Za-z.\-_]*+)$/x =~ local_resource_id ||
         /^
           (?<resource_type>generic_task)
           \.(?<location>[0-9A-Za-z\-_]*+)
